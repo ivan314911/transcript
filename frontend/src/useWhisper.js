@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { pipeline } from "@xenova/transformers";
 
-const MODEL_ID = "Xenova/whisper-tiny";
+const MODEL_ID = "Xenova/whisper-base";
 
 // Fallbacks webkit pour iOS Safari
 const AudioCtx = window.AudioContext || window.webkitAudioContext;

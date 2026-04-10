@@ -3,7 +3,7 @@ import { useRecorder } from "./useRecorder.js";
 import { useWhisper } from "./useWhisper.js";
 import "./App.css";
 
-const VERSION = 2;
+const VERSION = 3;
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
