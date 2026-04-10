@@ -3,6 +3,8 @@ import { useRecorder } from "./useRecorder.js";
 import { useWhisper } from "./useWhisper.js";
 import "./App.css";
 
+const VERSION = 2;
+
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
@@ -119,6 +121,7 @@ export default function App() {
       <header className="header">
         <h1>Notes de réunion</h1>
         <ModelBadge state={modelState} progress={loadProgress} />
+        <span className="version">v{VERSION}</span>
       </header>
 
       <main className="main">

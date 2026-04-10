@@ -32,6 +32,8 @@
 .badge-loading { background: #bee3f8; color: #2a69ac; }
 .badge-error { background: #fed7d7; color: #9b2c2c; }
 
+.version { font-size: 0.75rem; opacity: 0.5; }
+
 /* Layout */
 .main {
   flex: 1;
