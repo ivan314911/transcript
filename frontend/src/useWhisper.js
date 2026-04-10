@@ -40,38 +40,53 @@ export function useWhisper() {
     if (!pipelineRef.current) throw new Error("Modèle non chargé");
 
     // 1. Décoder le blob en AudioBuffer (avec fallback webkit iOS)
-    const arrayBuffer = await audioBlob.arrayBuffer();
+    let arrayBuffer;
+    try {
+      arrayBuffer = await audioBlob.arrayBuffer();
+    } catch (err) {
+      throw new Error(`Lecture audio impossible : ${err.message}`);
+    }
+
     const audioCtx = new AudioCtx();
     let audioBuffer;
     try {
       audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    } catch (err) {
+      throw new Error(`Décodage audio impossible : ${err.message}`);
     } finally {
       audioCtx.close();
     }
 
-    // 2. Rééchantillonner explicitement à 16kHz en mono via OfflineAudioContext
-    //    (plus fiable que de laisser Transformers.js le faire lui-même)
+    // 2. Rééchantillonner à 16kHz mono via OfflineAudioContext
     const TARGET_SR = 16000;
-    const offlineCtx = new OfflineCtx(
-      1, // mono
-      Math.ceil(audioBuffer.duration * TARGET_SR),
-      TARGET_SR
-    );
-    const source = offlineCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(offlineCtx.destination);
-    source.start(0);
-    const resampled = await offlineCtx.startRendering();
-    const float32 = resampled.getChannelData(0);
+    let float32;
+    try {
+      const offlineCtx = new OfflineCtx(
+        1,
+        Math.ceil(audioBuffer.duration * TARGET_SR),
+        TARGET_SR
+      );
+      const source = offlineCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(offlineCtx.destination);
+      source.start(0);
+      const resampled = await offlineCtx.startRendering();
+      float32 = resampled.getChannelData(0);
+    } catch (err) {
+      throw new Error(`Rééchantillonnage impossible : ${err.message}`);
+    }
 
-    // 3. Transcrire — on passe directement du 16kHz, pas besoin de chunk pour < 30s
-    const result = await pipelineRef.current(float32, {
-      language: "french",
-      task: "transcribe",
-      sampling_rate: TARGET_SR,
-    });
-
-    return result.text.trim();
+    // 3. Transcrire
+    try {
+      const result = await pipelineRef.current(float32, {
+        language: "french",
+        task: "transcribe",
+        sampling_rate: TARGET_SR,
+      });
+      return result.text.trim();
+    } catch (err) {
+      throw new Error(`Transcription impossible : ${err.message}`);
+    }
   }, []);
 
   return { modelState, loadProgress, loadModel, transcribe };
