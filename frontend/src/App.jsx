@@ -4,7 +4,7 @@ import { useWhisper } from "./useWhisper.js";
 import { saveNote, loadNotes, deleteNote } from "./db.js";
 import "./App.css";
 
-const VERSION = 5;
+const VERSION = 6;
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");

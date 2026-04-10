@@ -1,7 +1,10 @@
 import { useState, useRef, useCallback } from "react";
-import { pipeline } from "@xenova/transformers";
+import { pipeline, env } from "@xenova/transformers";
 
-const MODEL_ID = "Xenova/whisper-base";
+const MODEL_ID = "Xenova/whisper-tiny";
+
+// Désactiver le multi-threading WASM — réduit drastiquement la RAM sur iOS Safari
+env.backends.onnx.wasm.numThreads = 1;
 
 // Fallbacks webkit pour iOS Safari
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
