@@ -1,11 +1,14 @@
 import { useState, useRef, useCallback } from "react";
 import { pipeline } from "@xenova/transformers";
 
-// Modèle Whisper tiny — ~40 Mo, bon support français, rapide sur mobile
 const MODEL_ID = "Xenova/whisper-tiny";
 
+// Fallbacks webkit pour iOS Safari
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+
 export function useWhisper() {
-  const [modelState, setModelState] = useState("idle"); // idle | loading | ready | error
+  const [modelState, setModelState] = useState("idle");
   const [loadProgress, setLoadProgress] = useState(0);
   const pipelineRef = useRef(null);
 
@@ -36,32 +39,36 @@ export function useWhisper() {
   const transcribe = useCallback(async (audioBlob) => {
     if (!pipelineRef.current) throw new Error("Modèle non chargé");
 
-    // Décoder le blob audio en PCM Float32
+    // 1. Décoder le blob en AudioBuffer (avec fallback webkit iOS)
     const arrayBuffer = await audioBlob.arrayBuffer();
-    const audioCtx = new AudioContext();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    await audioCtx.close();
-
-    // Mixer en mono
-    let float32;
-    if (audioBuffer.numberOfChannels === 1) {
-      float32 = audioBuffer.getChannelData(0);
-    } else {
-      float32 = new Float32Array(audioBuffer.length);
-      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-        const channel = audioBuffer.getChannelData(ch);
-        for (let i = 0; i < channel.length; i++) {
-          float32[i] += channel[i] / audioBuffer.numberOfChannels;
-        }
-      }
+    const audioCtx = new AudioCtx();
+    let audioBuffer;
+    try {
+      audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    } finally {
+      audioCtx.close();
     }
 
+    // 2. Rééchantillonner explicitement à 16kHz en mono via OfflineAudioContext
+    //    (plus fiable que de laisser Transformers.js le faire lui-même)
+    const TARGET_SR = 16000;
+    const offlineCtx = new OfflineCtx(
+      1, // mono
+      Math.ceil(audioBuffer.duration * TARGET_SR),
+      TARGET_SR
+    );
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    const resampled = await offlineCtx.startRendering();
+    const float32 = resampled.getChannelData(0);
+
+    // 3. Transcrire — on passe directement du 16kHz, pas besoin de chunk pour < 30s
     const result = await pipelineRef.current(float32, {
       language: "french",
       task: "transcribe",
-      sampling_rate: audioBuffer.sampleRate,
-      chunk_length_s: 30,
-      stride_length_s: 5,
+      sampling_rate: TARGET_SR,
     });
 
     return result.text.trim();
