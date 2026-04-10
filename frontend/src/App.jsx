@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRecorder } from "./useRecorder.js";
 import { useWhisper } from "./useWhisper.js";
+import { saveNote, loadNotes, deleteNote } from "./db.js";
 import "./App.css";
 
-const VERSION = 4;
+const VERSION = 5;
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -12,7 +13,7 @@ function formatDuration(seconds) {
 }
 
 function formatDate(date) {
-  return date.toLocaleString("fr-FR", {
+  return new Date(date).toLocaleString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -31,9 +32,9 @@ export default function App() {
   const [notes, setNotes] = useState([]);
   const [error, setError] = useState("");
 
-  // Précharger le modèle dès l'ouverture de l'app
   useEffect(() => {
     loadModel();
+    loadNotes().then(setNotes).catch(console.error);
   }, []);
 
   const handleStart = useCallback(async () => {
@@ -45,9 +46,7 @@ export default function App() {
     }
   }, [start]);
 
-  const handleStop = useCallback(() => {
-    stop();
-  }, [stop]);
+  const handleStop = useCallback(() => stop(), [stop]);
 
   const handleTranscribe = useCallback(async () => {
     if (!audioBlob) return;
@@ -82,15 +81,22 @@ export default function App() {
     }
   }, [transcribe, resetRecorder]);
 
-  const handleSave = useCallback(() => {
-    setNotes((prev) => [
-      { id: Date.now(), date: new Date(), text: editingText, duration },
-      ...prev,
-    ]);
+  const handleSave = useCallback(async () => {
+    const note = {
+      id: Date.now(),
+      date: new Date().toISOString(),
+      text: editingText,
+      duration,
+      // On stocke l'audio en ArrayBuffer pour IndexedDB
+      audioData: audioBlob ? await audioBlob.arrayBuffer() : null,
+      audioType: audioBlob?.type || null,
+    };
+    await saveNote(note);
+    setNotes((prev) => [note, ...prev]);
     setTranscription(null);
     setEditingText("");
     resetRecorder();
-  }, [editingText, duration, resetRecorder]);
+  }, [editingText, duration, audioBlob, resetRecorder]);
 
   const handleNew = useCallback(() => {
     setTranscription(null);
@@ -99,7 +105,12 @@ export default function App() {
     resetRecorder();
   }, [resetRecorder]);
 
-  const handleDownload = useCallback((note) => {
+  const handleDeleteNote = useCallback(async (id) => {
+    await deleteNote(id);
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const handleDownloadText = useCallback((note) => {
     const blob = new Blob(
       [`Date : ${formatDate(note.date)}\n\n${note.text}`],
       { type: "text/plain;charset=utf-8" }
@@ -112,8 +123,18 @@ export default function App() {
     URL.revokeObjectURL(url);
   }, []);
 
+  const handleDownloadAudio = useCallback((note) => {
+    if (!note.audioData) return;
+    const blob = new Blob([note.audioData], { type: note.audioType || "audio/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `enregistrement-${note.id}.webm`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
   const isModelReady = modelState === "ready";
-  const showTranscribeBtn = recState === "stopped" && !transcription && !transcribing;
   const showResult = !!transcription && !transcribing;
 
   return (
@@ -236,16 +257,15 @@ export default function App() {
                 </div>
                 <p className="note-preview">{note.text}</p>
                 <div className="row-gap" style={{ justifyContent: "flex-end" }}>
-                  <button
-                    className="btn btn-ghost btn-small"
-                    onClick={() => handleDownload(note)}
-                  >
-                    Télécharger
+                  <button className="btn btn-ghost btn-small" onClick={() => handleDownloadText(note)}>
+                    Texte
                   </button>
-                  <button
-                    className="btn btn-danger btn-small"
-                    onClick={() => setNotes((prev) => prev.filter((n) => n.id !== note.id))}
-                  >
+                  {note.audioData && (
+                    <button className="btn btn-ghost btn-small" onClick={() => handleDownloadAudio(note)}>
+                      Audio
+                    </button>
+                  )}
+                  <button className="btn btn-danger btn-small" onClick={() => handleDeleteNote(note.id)}>
                     Supprimer
                   </button>
                 </div>
